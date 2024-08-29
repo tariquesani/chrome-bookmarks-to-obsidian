@@ -33,6 +33,7 @@ def create_markdown_file(path, title, url, date_added):
         md_file.write(f"title: \"{title}\"\n")
         md_file.write(f"url: \"{url}\"\n")
         md_file.write(f"date_added: \"{date_added}\"\n")
+        md_file.write(f"tags:\n  - Bookmark\n")
         md_file.write("---\n\n")
         md_file.write(f"# {title}\n\n")
         md_file.write(f"[{url}]({url})\n")
