@@ -20,6 +20,16 @@ def sanitize_name(name, max_length=128):
         name = f"{name}_reserved"
     return name
 
+# Function to generate daily note link based on watched date
+def generate_daily_note_link(date_added):
+    date_obj = datetime.strptime(date_added, '%Y-%m-%d %H:%M:%S')
+    year = date_obj.strftime('%Y')
+    month_num = date_obj.strftime('%m')
+    month_name = date_obj.strftime('%B')
+    day_date = date_obj.strftime('%Y-%m-%d')
+    day_name = date_obj.strftime('%A')
+    return f"/DailyNotes/{year}/{month_num}-{month_name}/{day_date}-{day_name}.md"
+
 # Function to create directories if they do not exist
 def create_dir(path):
     if not os.path.exists(path):
@@ -32,11 +42,13 @@ def create_markdown_file(path, title, url, date_added):
         md_file.write("---\n")
         md_file.write(f"title: \"{title}\"\n")
         md_file.write(f"url: \"{url}\"\n")
-        md_file.write(f"date_added: \"{date_added}\"\n")
+        md_file.write(f"date: \"{date_added}\"\n")
         md_file.write(f"tags:\n  - Bookmark\n")
         md_file.write("---\n\n")
         md_file.write(f"# {title}\n\n")
-        md_file.write(f"[{url}]({url})\n")
+        md_file.write(f"[{url}]({url})\n\n")
+        daily_note_link = generate_daily_note_link(date_added)
+        md_file.write(f"Date Added: [{date_added}]({daily_note_link})")
 
 # Function to convert Chrome's timestamp format to a readable datetime string
 def convert_chrome_timestamp(timestamp):
@@ -77,6 +89,7 @@ def main():
     # Get the JSON file and output directory from arguments or config file
     json_file = args.json or config.get('json_file')
     output_dir = args.output or config.get('output_dir')
+    dailynotes_format = config.get('dailynotes')
 
     if not json_file or not output_dir:
         print("Error: JSON file and output directory must be provided either as arguments or in the config.yaml file.")
