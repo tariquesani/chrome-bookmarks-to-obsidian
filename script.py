@@ -2,12 +2,34 @@ import os
 import json
 import re
 import argparse
+import requests
 import yaml
 from datetime import datetime, timedelta
 
 # Define a set of invalid characters for Windows filenames and folder names
 INVALID_CHARS = r'[<>:"/\\|?*]'
 RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL", "COM1", "LPT1", "COM2", "LPT2", "COM3", "LPT3", "COM4", "LPT4", "COM5", "LPT5", "COM6", "LPT6", "COM7", "LPT7", "COM8", "LPT8", "COM9", "LPT9"}
+
+URL_PREVIEW_API = "https://api.microlink.io/?url="  # Free API to get URL preview
+
+# Function to fetch URL preview from microlink API
+def fetch_url_preview(url):
+    try:
+        response = requests.get(URL_PREVIEW_API + url)
+        if response.status_code == 200:
+            data = response.json().get("data", {})
+            if data.get("description"):
+                description = data.get("description")
+            else:
+                description = None
+            if data.get("image"):
+                image_url = data.get("image").get("url")
+            else:
+                image_url = None
+            return description, image_url
+    except requests.RequestException:
+        return None, None
+    return None, None
 
 # Function to sanitize folder and file names
 def sanitize_name(name, max_length=128):
@@ -30,6 +52,8 @@ def generate_daily_note_link(date_added):
     day_name = date_obj.strftime('%A')
     return f"/DailyNotes/{year}/{month_num}-{month_name}/{day_date}-{day_name}.md"
 
+
+
 # Function to create directories if they do not exist
 def create_dir(path):
     if not os.path.exists(path):
@@ -47,6 +71,11 @@ def create_markdown_file(path, title, url, date_added):
         md_file.write("---\n\n")
         md_file.write(f"# {title}\n\n")
         md_file.write(f"[{url}]({url})\n\n")
+        description, image_url = fetch_url_preview(url)
+        if description:
+            md_file.write(f"{description}\n\n")
+        if image_url:
+            md_file.write(f"![{title}]({image_url})\n\n")
         daily_note_link = generate_daily_note_link(date_added)
         md_file.write(f"Date Added: [{date_added}]({daily_note_link})")
 
@@ -73,6 +102,8 @@ def process_bookmarks(bookmarks, parent_path):
 def load_config(config_file):
     with open(config_file, 'r') as file:
         return yaml.safe_load(file)
+    
+
 
 # Main function
 def main():
@@ -89,7 +120,7 @@ def main():
     # Get the JSON file and output directory from arguments or config file
     json_file = args.json or config.get('json_file')
     output_dir = args.output or config.get('output_dir')
-    dailynotes_format = config.get('dailynotes')
+    
 
     if not json_file or not output_dir:
         print("Error: JSON file and output directory must be provided either as arguments or in the config.yaml file.")
