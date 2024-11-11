@@ -1,36 +1,101 @@
 import os
+import sys
 import json
 import re
 import argparse
 import requests
 import yaml
 from datetime import datetime, timedelta
+from PIL import Image
+from io import BytesIO
 
 # Define a set of invalid characters for Windows filenames and folder names
 INVALID_CHARS = r'[<>:"/\\|?*]'
 RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL", "COM1", "LPT1", "COM2", "LPT2", "COM3", "LPT3", "COM4", "LPT4", "COM5", "LPT5", "COM6", "LPT6", "COM7", "LPT7", "COM8", "LPT8", "COM9", "LPT9"}
 
-URL_PREVIEW_API = "https://api.microlink.io/?url="  # Free API to get URL preview
+URL_PREVIEW_API = "https://api.microlink.io"  # Free API to get URL preview
 
 # Function to fetch URL preview from microlink API
-def fetch_url_preview(url):
+def fetch_url_preview(url, title=None):
     try:
-        response = requests.get(URL_PREVIEW_API + url)
-        if response.status_code == 200:
-            data = response.json().get("data", {})
-            if data.get("description"):
-                description = data.get("description")
-            else:
-                description = None
-            if data.get("image"):
-                image_url = data.get("image").get("url")
-            else:
-                image_url = None
-            return description, image_url
-    except requests.RequestException:
-        return None, None
-    return None, None
+        params = {
+            'url': url,
+            'screenshot': True
+        }
 
+        # Send the request with the parameters
+        response = requests.get(URL_PREVIEW_API, params)
+        data = response.json()
+
+        # Check if the API call was successful
+        if data.get("status") != "success":
+            print(f"API call was not successful. Exiting. Error: {data['message']}")
+            sys.exit()
+
+        # Extract data from the API response
+        preview_data = data.get("data", {})
+        if preview_data['description']:
+            description = preview_data.get("description")
+        else:
+            description = None
+
+        if preview_data['image']:
+            image_url = preview_data.get("image", {}).get("url")
+        else:
+            image_url = None
+
+        if preview_data['screenshot']:
+            screenshot_url = preview_data.get("screenshot", {}).get("url")
+        else:
+            screenshot_url = None
+
+        # Save the screenshot locally if a screenshot URL is provided
+        if screenshot_url:
+            screenshot_name = save_screenshot_locally(screenshot_url, title)
+
+        return {
+            "description": description,
+            "image_url": image_url,
+            "screenshot_url": screenshot_url,
+            "screenshot_name": screenshot_name if screenshot_url else None
+        }
+
+    except requests.RequestException as e:
+        print(f"An error occurred: {e}")
+        sys.exit()
+
+def save_screenshot_locally(screenshot_url, title):
+    """
+    Download the screenshot from the given URL and save it locally to the 'screenshots' directory
+    with a filename derived from the URL. Return the path to the saved screenshot or None if
+    the download failed.
+    """
+    try:
+        # Create the screenshots directory if it doesn't exist
+        create_dir("screenshots")
+
+        # Derive a filename from the URL (by replacing special characters) or use a generic one
+        # filename = url.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "_").replace(".", "_")
+        filepath = f"screenshots/{title}.png"
+
+        # Download and save the screenshot image
+        # Download and save the screenshot image
+        response = requests.get(screenshot_url)
+        image = Image.open(BytesIO(response.content))
+
+        # Resize the image to fit within an 800-pixel width
+        image.thumbnail((800, image.height), Image.LANCZOS)
+
+        # Save the resized image
+        image.save(filepath, format="PNG")
+
+        print(f"Screenshot saved to {filepath}")
+        return title
+
+    except requests.RequestException as e:
+        print(f"Failed to download screenshot: {e}")
+        return None
+    
 # Function to sanitize folder and file names
 def sanitize_name(name, max_length=128):
     # Remove invalid characters
@@ -62,6 +127,8 @@ def create_dir(path):
 # Function to create markdown files for bookmarks with metadata as frontmatter
 def create_markdown_file(path, title, url, date_added):
     filename = os.path.join(path, f"{title}.md")
+    if os.path.exists(filename):
+        return
     with open(filename, "w", encoding="utf-8") as md_file:
         md_file.write("---\n")
         md_file.write(f"title: \"{title}\"\n")
@@ -71,13 +138,14 @@ def create_markdown_file(path, title, url, date_added):
         md_file.write("---\n\n")
         md_file.write(f"# {title}\n\n")
         md_file.write(f"[{url}]({url})\n\n")
-        description, image_url = fetch_url_preview(url)
-        if description:
-            md_file.write(f"{description}\n\n")
-        if image_url:
-            md_file.write(f"![{title}]({image_url})\n\n")
+        preview = fetch_url_preview(url, title)
+        if preview['description']:
+            md_file.write(f"{preview['description']}\n\n")
+        if preview['screenshot_name']:
+            md_file.write(f"![[{preview['screenshot_name']}.png]]\n\n")
         daily_note_link = generate_daily_note_link(date_added)
         md_file.write(f"Date Added: [{date_added}]({daily_note_link})")
+        print(f"Markdown file created: {filename}")
 
 # Function to convert Chrome's timestamp format to a readable datetime string
 def convert_chrome_timestamp(timestamp):
@@ -135,6 +203,6 @@ def main():
     
     # Process bookmarks
     process_bookmarks(bookmarks, output_dir)
-
+    
 if __name__ == "__main__":
     main()

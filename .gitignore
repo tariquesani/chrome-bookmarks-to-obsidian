@@ -125,4 +125,6 @@ venv.bak/
 dmypy.json
 
 Bookmarks.json
-/Bookmarks
+/Bookmarks/
+/screenshots
+url_preview_test.py
