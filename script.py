@@ -5,7 +5,8 @@ import re
 import argparse
 import requests
 import yaml
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import pytz
 from PIL import Image
 from io import BytesIO
 
@@ -28,9 +29,33 @@ def fetch_url_preview(url, title=None):
         data = response.json()
 
         # Check if the API call was successful
-        if data.get("status") != "success":
-            print(f"API call was not successful. Exiting. Error: {data['message']}")
-            sys.exit()
+        if data.get("status") != "success": 
+            if data.get("code") == 'ERATE':
+                reset_time_utc = response.headers.get("X-Rate-Limit-Reset")
+                if reset_time_utc:
+                    # Convert the reset time to a datetime object in UTC
+                    reset_time = datetime.fromtimestamp(int(reset_time_utc), timezone.utc)
+
+                    # Convert UTC reset time to local time
+                    local_timezone = pytz.timezone("Asia/Kolkata")  # Replace with user’s local timezone if known
+                    reset_time_local = reset_time.astimezone(local_timezone)
+
+                    # Calculate wait time in seconds
+                    current_time = datetime.now(timezone.utc)
+                    wait_time = (reset_time - current_time).total_seconds()
+
+                    # Display a message to the user with local time
+                    print(f"Microlink API rate limit reached. Please retry after {int(wait_time)} seconds, at {reset_time_local.strftime('%Y-%m-%d %H:%M:%S')} local time.")
+                sys.exit()
+            elif data.get("code") == 'EINVALURL':
+                print(f"API call was not successful. Continuing to next bookmark. Code: {data['code']}.")
+                return {
+                    "description": None,
+                    "image_url": None,
+                    "screenshot_url": None,
+                    "screenshot_name": None
+                    }
+            
 
         # Extract data from the API response
         preview_data = data.get("data", {})
@@ -74,11 +99,9 @@ def save_screenshot_locally(screenshot_url, title):
         # Create the screenshots directory if it doesn't exist
         create_dir("screenshots")
 
-        # Derive a filename from the URL (by replacing special characters) or use a generic one
-        # filename = url.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "_").replace(".", "_")
+        # The filename for the screenshot is same as the title (and same as the markdown file name)
         filepath = f"screenshots/{title}.png"
 
-        # Download and save the screenshot image
         # Download and save the screenshot image
         response = requests.get(screenshot_url)
         image = Image.open(BytesIO(response.content))
