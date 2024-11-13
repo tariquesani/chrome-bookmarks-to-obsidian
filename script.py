@@ -59,20 +59,9 @@ def fetch_url_preview(url, title=None):
 
         # Extract data from the API response
         preview_data = data.get("data", {})
-        if preview_data['description']:
-            description = preview_data.get("description")
-        else:
-            description = None
-
-        if preview_data['image']:
-            image_url = preview_data.get("image", {}).get("url")
-        else:
-            image_url = None
-
-        if preview_data['screenshot']:
-            screenshot_url = preview_data.get("screenshot", {}).get("url")
-        else:
-            screenshot_url = None
+        description = preview_data.get("description",None)
+        image_url = preview_data.get("image", {}).get("url") if preview_data.get("image") else None
+        screenshot_url = preview_data.get("screenshot", {}).get("url", None) or None
 
         # Save the screenshot locally if a screenshot URL is provided
         if screenshot_url:
