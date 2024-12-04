@@ -17,7 +17,7 @@ RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL", "COM1", "LPT1", "COM2", "LPT2", "C
 URL_PREVIEW_API = "https://api.microlink.io"  # Free API to get URL preview
 
 # Function to fetch URL preview from microlink API
-def fetch_url_preview(url, title=None):
+def fetch_url_preview(url, title=None, screenshots_dir="screenshots"):
     try:
         params = {
             'url': url,
@@ -37,7 +37,7 @@ def fetch_url_preview(url, title=None):
                     reset_time = datetime.fromtimestamp(int(reset_time_utc), timezone.utc)
 
                     # Convert UTC reset time to local time
-                    local_timezone = pytz.timezone("Asia/Kolkata")  # Replace with user’s local timezone if known
+                    local_timezone = pytz.timezone("Asia/Kolkata")  # Replace with user's local timezone if known
                     reset_time_local = reset_time.astimezone(local_timezone)
 
                     # Calculate wait time in seconds
@@ -65,7 +65,7 @@ def fetch_url_preview(url, title=None):
 
         # Save the screenshot locally if a screenshot URL is provided
         if screenshot_url:
-            screenshot_name = save_screenshot_locally(screenshot_url, title)
+            screenshot_name = save_screenshot_locally(screenshot_url, title, screenshots_dir)
 
         return {
             "description": description,
@@ -78,18 +78,18 @@ def fetch_url_preview(url, title=None):
         print(f"An error occurred: {e}")
         sys.exit()
 
-def save_screenshot_locally(screenshot_url, title):
+def save_screenshot_locally(screenshot_url, title, screenshots_dir="screenshots"):
     """
-    Download the screenshot from the given URL and save it locally to the 'screenshots' directory
+    Download the screenshot from the given URL and save it locally to the specified screenshots directory
     with a filename derived from the URL. Return the path to the saved screenshot or None if
     the download failed.
     """
     try:
         # Create the screenshots directory if it doesn't exist
-        create_dir("screenshots")
+        create_dir(screenshots_dir)
 
         # The filename for the screenshot is same as the title (and same as the markdown file name)
-        filepath = f"screenshots/{title}.png"
+        filepath = os.path.join(screenshots_dir, f"{title}.png")
 
         # Download and save the screenshot image
         response = requests.get(screenshot_url)
@@ -129,15 +129,13 @@ def generate_daily_note_link(date_added):
     day_name = date_obj.strftime('%A')
     return f"/DailyNotes/{year}/{month_num}-{month_name}/{day_date}-{day_name}.md"
 
-
-
 # Function to create directories if they do not exist
 def create_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
 # Function to create markdown files for bookmarks with metadata as frontmatter
-def create_markdown_file(path, title, url, date_added):
+def create_markdown_file(path, title, url, date_added, screenshots_dir="screenshots"):
     filename = os.path.join(path, f"{title}.md")
     if os.path.exists(filename):
         return
@@ -150,7 +148,7 @@ def create_markdown_file(path, title, url, date_added):
         md_file.write("---\n\n")
         md_file.write(f"# {title}\n\n")
         md_file.write(f"[{url}]({url})\n\n")
-        preview = fetch_url_preview(url, title)
+        preview = fetch_url_preview(url, title, screenshots_dir)
         if preview['description']:
             md_file.write(f"{preview['description']}\n\n")
         if preview['screenshot_name']:
@@ -165,25 +163,23 @@ def convert_chrome_timestamp(timestamp):
     return datetime(1601, 1, 1) + timedelta(microseconds=int(timestamp))
 
 # Recursive function to process bookmarks and folders
-def process_bookmarks(bookmarks, parent_path):
+def process_bookmarks(bookmarks, parent_path, screenshots_dir="screenshots"):
     for item in bookmarks:
         if item['type'] == 'folder':
             folder_name = sanitize_name(item['name'])
             folder_path = os.path.join(parent_path, folder_name)
             create_dir(folder_path)
-            process_bookmarks(item['children'], folder_path)
+            process_bookmarks(item['children'], folder_path, screenshots_dir)
         elif item['type'] == 'url':
             bookmark_name = sanitize_name(item['name'])
             bookmark_url = item['url']
             date_added = convert_chrome_timestamp(item.get('date_added', 0)).strftime('%Y-%m-%d %H:%M:%S')
-            create_markdown_file(parent_path, bookmark_name, bookmark_url, date_added)
+            create_markdown_file(parent_path, bookmark_name, bookmark_url, date_added, screenshots_dir)
 
 # Function to load configuration from YAML file
 def load_config(config_file):
     with open(config_file, 'r') as file:
         return yaml.safe_load(file)
-    
-
 
 # Main function
 def main():
@@ -192,16 +188,17 @@ def main():
     parser.add_argument('-c', '--config', type=str, default='config.yaml', help='Path to the config.yaml file')
     parser.add_argument('-j', '--json', type=str, help='Path to the bookmarks JSON file')
     parser.add_argument('-o', '--output', type=str, help='Output directory for markdown files')
+    parser.add_argument('-s', '--screenshots', type=str, help='Output directory for screenshots')
     args = parser.parse_args()
 
     # Load configuration from YAML file
     config = load_config(args.config) if os.path.exists(args.config) else {}
 
-    # Get the JSON file and output directory from arguments or config file
+    # Get the JSON file, output directory, and screenshots directory from arguments or config file
     json_file = args.json or config.get('json_file')
     output_dir = args.output or config.get('output_dir')
+    screenshots_dir = args.screenshots or config.get('screenshots_dir', 'screenshots')
     
-
     if not json_file or not output_dir:
         print("Error: JSON file and output directory must be provided either as arguments or in the config.yaml file.")
         return
@@ -214,7 +211,7 @@ def main():
     bookmarks = data['roots']['bookmark_bar']['children']
     
     # Process bookmarks
-    process_bookmarks(bookmarks, output_dir)
+    process_bookmarks(bookmarks, output_dir, screenshots_dir)
     
 if __name__ == "__main__":
     main()
